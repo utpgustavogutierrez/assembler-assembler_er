@@ -30,7 +30,7 @@
   - [Tipo B](#tipo-b)
   - [Tipo J](#tipo-j)
   - [Tipo U](#tipo-u)
-
+- [SOLUCIÓN](https://github.com/utpgustavogutierrez/assembler-assembler_er/edit/main/Readme.md#tipo-u:~:text=700-,701,-702)
 ## Introducción
 
 Este trabajo está diseñado para ser realizado en parejas. Es decir, grupos de
@@ -697,3 +697,861 @@ utilidad.
 | imm[31:12] | rd  | 0110111 | LUI   |
 | imm[31:12] | rd  | 0010111 | AUIPC |
 
+
+## SOLUCIÓN
+La solución se entrega a continuación, teniendo presente que en el código se solucionan todos los puntos requeridos en la asignación:
+```python
+import re # Módulo para trabajar con expresiones regulares
+import sys  # Importa el módulo sys para poder usar sys.exit() y terminar el programa
+
+# Se requiere un diccionario para mapear los nombres de los registros si se entrega
+# el nombre del registro 'sp' en lugar de 'x2' o 'x3'
+
+registros_mapeo = {
+    "zero": "x0",
+    "ra": "x1",
+    "sp": "x2",
+    "gp": "x3",
+    "tp": "x4",
+    "t0": "x5",
+    "t1": "x6",
+    "t2": "x7",
+    "s0": "x8",
+    "s1": "x9",
+    "a0": "x10",
+    "a1": "x11",
+    "a2": "x12",
+    "a3": "x13",
+    "a4": "x14",
+    "a5": "x15",
+    "a6": "x16",
+    "a7": "x17",
+    "s2": "x18",
+    "s3": "x19",
+    "s4": "x20",
+    "s5": "x21",
+    "s6": "x22",
+    "s7": "x23",
+    "s8": "x24",
+    "s9": "x25",
+    "s10": "x26",
+    "s11": "x27",
+    "t3": "x28",
+    "t4": "x29",
+    "t5": "x30",
+    "t6": "x31",
+}
+
+"""
+expreg_global va a devolver algo como esto:
+\bzero\b|\bra\b|\bsp\b|\bgp\b|\btp\b|\bt0\b|...y así para los demás registros
+
+Esta expresión regular se va a usar para reemplazar los nombres de los registros por
+sus valores en el diccionario registros_mapeo cuando se utilice la función 're.sub()'.
+
+La función 're.sub(pattern, repl, string)' se utiliza para reemplazar todas las
+ocurrencias de 'pattern' en 'string' por 'repl'. Si 'repl' es una función, se llama
+a la función con el objeto 'match' y se reemplaza por el valor devuelto por la función.
+"""
+# Lista para almacenar las partes de la expresión regular en donde se añaden los registros a la lista
+expreg_partes = [r'\b' + re.escape(nombre) + r'\b' for nombre in registros_mapeo.keys()]
+expreg_global = '|'.join(expreg_partes) # Se unen las partes con el operador OR
+
+
+# Se mapean las instrucciones diccionarios para obtener la func3 y func7
+# En el caso de las instrucciones tipo U solo se tiene el opcode
+
+# para las instrucciones tipo R
+instrucciones_R = {
+    'add': {'funct3': '000', 'funct7': '0000000'},
+    'sub': {'funct3': '000', 'funct7': '0100000'},
+    'sll': {'funct3': '001', 'funct7': '0000000'},
+    'slt': {'funct3': '010', 'funct7': '0000000'},
+    'sltu': {'funct3': '011', 'funct7': '0000000'},
+    'xor': {'funct3': '100', 'funct7': '0000000'},
+    'srl': {'funct3': '101', 'funct7': '0000000'},
+    'sra': {'funct3': '101', 'funct7': '0100000'},
+    'or': {'funct3': '110', 'funct7': '0000000'},
+    'and': {'funct3': '111', 'funct7': '0000000'},
+    'addw': {'funct3': '000', 'funct7': '0000000'},
+    'subw': {'funct3': '000', 'funct7': '0100000'},
+    'sllw': {'funct3': '001', 'funct7': '0000000'},
+    'srlw': {'funct3': '101', 'funct7': '0000000'},
+    'sraw': {'funct3': '101', 'funct7': '0100000'},
+}
+
+# para las instrucciones tipo I
+instrucciones_I = {
+    'addi': {'funct3': '000', 'funct7': ''},
+    'slti': {'funct3': '010', 'funct7': ''},
+    'sltiu': {'funct3': '011', 'funct7': ''},
+    'xori': {'funct3': '100', 'funct7': ''},
+    'ori': {'funct3': '110', 'funct7': ''},
+    'andi': {'funct3': '111', 'funct7': ''},
+    'slli': {'funct3': '001', 'funct7': '0000000'},
+    'srli': {'funct3': '101', 'funct7' : '0000000'},
+    'srai': {'funct3': '101', 'funct7': '0100000'},
+    'addiw': {'funct3': '000', 'funct7': ''},
+    'slliw': {'funct3': '001', 'funct7': '0000000'},
+    'srliw': {'funct3': '101', 'funct7': '0000000'},
+    'sraiw': {'funct3': '101', 'funct7': '0100000'},
+    'sd': {'funct3': '011', 'funct7': ''},
+    'ld': {'funct3': '010', 'funct7': ''},
+    'lw': {'funct3': '010', 'funct7': ''},
+    'lh': {'funct3': '001', 'funct7': ''},
+    'lb': {'funct3': '000', 'funct7': ''},
+    'lbu': {'funct3': '100', 'funct7': ''},
+    'lhu': {'funct3': '101', 'funct7': ''},
+    'lwu': {'funct3': '110', 'funct7': ''},
+    'jalr': {'funct3': '000', 'funct7': ''},
+}
+
+# para las instrucciones tipo S
+instrucciones_S = {
+    'sb': {'funct3': '000'},
+    'sh': {'funct3': '001'},
+    'sw': {'funct3': '010'},
+}
+
+# para las instrucciones tipo SB
+instrucciones_SB = {
+    'beq': {'funct3': '000'},
+    'bne': {'funct3': '001'},
+    'blt': {'funct3': '100'},
+    'bge': {'funct3': '101'},
+    'bltu': {'funct3': '110'},
+    'bgeu': {'funct3': '111'},
+}
+
+# Para las instrucciones tipo U solo se tiene el opcode
+instrucciones_U = {
+    'lui': {'opcode': '0110111'},
+    'auipc': {'opcode': '0010111'},
+}
+
+# Expresión regular para identificar etiquetas al inicio de una línea
+expreg_label = r'^\s*(\w+):\s*'
+
+# Expresión regular para instrucciones tipo I (ej de asignación inmediata addi x1, x2, 10) - (ej de carga. lw x10, -20(x8))
+#expreg_tipo_i = r'^\s*(\w+)\s+(\w+),\s*(\w+),\s*(-?\d+)\s*$'
+expreg_tipo_i = r'^\s*(\w+)\s+(\w+),\s*(-?\d+)\((\w+)\)\s*|\s*(\w+)\s+(\w+),\s*(\w+),\s*(-?\d+)\s*$'
+
+# Expresión regular para instrucciones tipo R (ej. add x1, x2, x3)
+expreg_tipo_r = r'^\s*(\w+)\s+(\w+),\s*(\w+),\s*(\w+)\s*$'
+
+# Expresión regular para instrucciones tipo S (ej. sw x1, x2, 10)
+expreg_tipo_s = r'^\s*(sb|sh|sw)\s+(\w+),\s*(-?\d+)\((\w+)\)\s*$'
+
+# Expresión regular para instrucciones tipo SB (ej. beq x1, x2, label)
+expreg_tipo_sb = r'^\s*(beq|bne|blt|bge|bltu|bgeu)\s+(\w+),\s*(\w+),\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*$'
+
+# Expresión regular para instrucciones tipo U (ej. lui x1, 10)
+expreg_tipo_u = r'^\s*(\w+)\s+(\w+),\s*(-?\d+)\s*$'
+
+# Expresión regular para instrucciones UJ de salto con etiquetas (ej. jal x0, label)
+expreg_tipo_uj = r'^\s*(\w+)\s+(\w+),\s*(\w+)\s*$'
+
+# Función para imprimir la presentación del programa
+def presentacion():
+    print("\n********************************************************************************")
+    print("*   Representación binaria y hexadecimal de instrucciones RISC-V mediante ER   *")
+    print("*   Asignatura: Gramáticas y lenguajes formales                                *")
+    print("*   Isabela Hevia - Alexander Castañeda                                        *")
+    print("********************************************************************************")
+
+
+# Se crea una función para eliminar los comentarios de las instrucciones
+def eliminar_comentarios(linea):
+    """
+    La función se encarga de eliminar los comentarios de una línea de instrucción
+
+    Argumentos:
+    linea -- Línea de instrucción a la que se le eliminarán los comentarios
+
+    Retorna:
+    La función retorna la línea de instrucción sin comentarios
+    """
+    # Se eliminan los comentarios que emmpiezan con '#' o ';'
+    linea = re.sub(r'\s*#.*', '', linea) # Se tiene en cuenta los espacio en blanco antes del comentario con \s*
+    linea = re.sub(r'\s*;.*', '', linea) # Se tiene en cuenta los espacio en blanco antes del comentario con \s*
+    return linea.strip() # Se eliminan los espacios en blanco al inicio y al final de la línea
+
+
+# Se crea una función para mapear los registros si se entrega el nombre del registro 'sp' en lugar de 'x2' o 'x3'
+def mapear_registros(linea):
+    """
+    La función se encarga de mapear los registros si se entrega el nombre del registro 'sp' en lugar de 'x2' o 'x3'
+
+    Argumentos:
+    linea -- Linea a la que se le mapearán los registros
+
+    Retorna:
+    La función retorna la instrucción con los registros mapeados
+    
+    for registro, registro_mapeado in registros_mapeo.items():
+        instruccion = instruccion.replace(registro, registro_mapeado)
+    return instruccion
+    """
+    # Se crea una función para reemplazar las palabras por su valor en el diccionario registros_mapeo
+    def reemplazo(match):
+        palabra = match.group(0)  # Se obtiene la palabra completa que coincidió con la expresión regular
+        
+        # Reemplaza solo si la palabra es un nombre de registro, si no coincide con palabra entonces se retorna la palabra
+        return registros_mapeo.get(palabra, palabra)
+
+    # re.sub() busca en la línea la expresión (expreg) regular, si hay conicidencia se llama a la función reemplazo
+    # la cual reemplaza la palabra por su valor en el diccionario registros_mapeo
+    instruccion = re.sub(expreg_global, reemplazo, linea)
+    return instruccion
+
+
+# Se lee el archivo y se obtienen las instrucciones a partir de las expresiones regulares
+def leer_archivo(nombre_archivo):
+    """
+    La función se encarga de leer un archivo de texto y procesar las instrucciones
+
+    Argumentos:
+    nombre_archivo -- Nombre del archivo de texto a leer
+
+    Retorna:
+    La función retorna una tupla con dos elementos:
+    - Una lista de instrucciones sin procesar
+    - Una lista de instrucciones procesadas
+    """
+    instrucciones_procesadas = []  # Lista para almacenar las instrucciones procesadas
+    with open(nombre_archivo, 'r') as file:
+        lineas_sin_procesar = file.readlines()
+
+    # Se eliminan los comentarios y se mapean los registros
+    lineas = [mapear_registros(eliminar_comentarios(linea_sin_procesar)) for linea_sin_procesar in lineas_sin_procesar]
+    instrucciones_sin_procesar = lineas
+    for linea in lineas:
+        print(linea)
+    input("\nPresione Enter para continuar...")
+    
+    for indice, linea in enumerate(lineas):
+        label_match = re.match(expreg_label, linea)
+        if label_match:
+            label = label_match.group(1) # Se obtiene el nombre de la etiqueta (la primera coincidencia)
+            instrucciones_procesadas.append(label) # Se agrega la etiqueta a la lista de instrucciones procesadas
+            linea = linea[label_match.end():].strip()  # Se recorta la parte de la etiqueta
+            linea = linea.strip()  # Se eliminan los espacios en blanco al inicio y al final de la línea
+
+        if re.match(expreg_tipo_sb, linea):
+            # Se obtienen las partes de la instrucción en una tupla, por ejemplo: ('beq', 'x1', 'x2', 'label')
+            campos = re.findall(expreg_tipo_sb, linea)[0]
+            instrucciones_procesadas.append(('SB',) + campos + (indice,))
+        elif re.match(expreg_tipo_s, linea):
+            # Se obtienen las partes de la instrucción en una tupla, por ejemplo: ('sw', 'x1', '10', 'x2')
+            campos = re.findall(expreg_tipo_s, linea)[0]
+            instrucciones_procesadas.append(('S',) + campos)
+        elif re.match(expreg_tipo_i, linea):
+            # Se obtienen las partes de la instrucción en una tupla, por ejemplo: ('addi', 'x1', 'x2', '10')
+            campos = re.findall(expreg_tipo_i, linea)[0]
+            instrucciones_procesadas.append(('I',) + campos)
+        elif re.match(expreg_tipo_r, linea):
+            # Se obtienen las partes de la instrucción en una tupla, por ejemplo: ('add', 'x1', 'x2', 'x3')
+            campos = re.findall(expreg_tipo_r, linea)[0]
+            instrucciones_procesadas.append(('R',) + campos)
+        elif re.match(expreg_tipo_u, linea):
+            # Se obtienen las partes de la instrucción en una tupla, por ejemplo: ('lui', 'x1', '10')
+            campos = re.findall(expreg_tipo_u, linea)[0]
+            instrucciones_procesadas.append(('U',) + campos)
+        elif re.match(expreg_tipo_uj, linea):
+            # Se obtienen las partes de la instrucción en una tupla, por ejemplo: ('jal', 'x0', 'label')
+            campos = re.findall(expreg_tipo_uj, linea)[0]
+            instrucciones_procesadas.append(('UJ',) + campos  + (indice,))
+    return instrucciones_sin_procesar, instrucciones_procesadas
+
+
+# Función para convertir un número binario a hexadecimal y se formatea
+# para que tenga 8 dígitos y esté separado por espacios en grupos de 2
+def convertir_a_hexadecimal(binario):
+    """
+    La función se encarga de convertir un número binario a hexadecimal y formatearlo
+
+    Argumentos:
+    binario -- Número binario a convertir
+    
+    Retorna:
+    La función retorna el número binario convertido a hexadecimal y formateado
+    """
+    # Convertir binario a hexadecimal
+    hexadecimal = f"{int(binario, 2):X}"
+
+    # Se ajusta a 8 dígitos, rellenando con ceros a la izquierda si es necesario
+    hexadecimal_formateado = f"{hexadecimal:0>8}"
+    
+    # Formatear en grupos de dos dígitos
+    hexadecimal_formateado = " ".join([hexadecimal_formateado[i:i+2] for i in range(0, len(hexadecimal_formateado), 2)])
+    
+    return hexadecimal_formateado
+
+
+# Función para imprimir el contenido de un archivo en hexadecimal
+def imprimir_hexadecimal(nombre_archivo):
+    """
+    La función se encarga de imprimir el contenido de un archivo en hexadecimal
+
+    Argumentos:
+    nombre_archivo -- Nombre del archivo a leer
+    
+    Retorna:
+    La función no retorna nada, imprime el contenido del archivo en hexadecimal
+    """
+    with open(nombre_archivo, 'r') as file:
+        print("\nInstrucciones en hexadecimal:")
+        for linea in file:
+            print(linea.strip('\n'))
+
+
+# Función para imprimir el contenido de un archivo en binario
+def imprimir_binario(instrucciones_binario):
+    """
+    La función se encarga de imprimir el contenido de un archivo en binario
+
+    Argumentos:
+    instrucciones_binario -- Lista de instrucciones en binario
+
+    Retorna:
+    La función no retorna nada, imprime el contenido del archivo en binario
+
+    """
+    print("\nInstrucciones en binario:")
+    for indice, instruccion in enumerate(instrucciones_binario):
+        print(f"{indice + 1:0>2} {instruccion}")
+
+
+# Función para guardar las instrucciones en hexadecimal en un archivo
+def guardar_hexadecimal(instrucciones_binario, nombre_archivo):
+    """
+    La función se encarga de guardar las instrucciones en hexadecimal en un archivo
+
+    Argumentos:
+    instrucciones_binario -- Lista de instrucciones en binario
+    nombre_archivo -- Nombre del archivo en el que se guardarán las instrucciones en hexadecimal
+    
+    Retorna:
+    La función no retorna nada, guarda las instrucciones en hexadecimal en un archivo
+
+    """
+    # Se obtiene el índice más grande de la lista y el número de dígitos del índice más grande
+    # para formatear correctamente las líneas y que queden alineadas
+    maximo_indice = len(instrucciones_binario) - 1  # El índice más grande de la lista
+    maximo_num_digitos = len(str(maximo_indice))  # Número de dígitos del índice más grande
+
+    with open(nombre_archivo, 'w') as archivo:
+        for indice, instruccion in enumerate(instrucciones_binario):
+            hexadecimal = convertir_a_hexadecimal(instruccion)
+            formato_completo = f"{(indice + 1):>{maximo_num_digitos}} {hexadecimal}"
+            archivo.write(formato_completo + '\n')
+
+
+# Se asignan direcciones a las etiquetas y a las instrucciones
+# Se asume que cada instrucción ocupa 4 bytes y se empieza en la dirección 0
+def asignar_direcciones(instrucciones):
+    """
+    La función se encarga de asignar direcciones a las etiquetas y a las instrucciones
+
+    Argumentos:
+    instrucciones -- Lista de instrucciones a las que se les asignarán direcciones
+
+    Retorna:
+    La función retorna un diccionario con las direcciones asignadas a las etiquetas y a las instrucciones
+
+    """
+    direcciones = {} # Diccionario para almacenar las direcciones
+    direccion_actual = 0  # Se inicia en la dirección 0
+
+    for indice, instruccion in enumerate(instrucciones):
+        instruccion_limpia = instruccion.strip()
+
+        # Se asgina una dirección a cada línea de instrucción asi no tenga etiqueta
+        linea_id = f"linea{indice}"
+        direcciones[linea_id] = direccion_actual
+
+        # Se buscan etiquetas en la instrucción
+        campos = instruccion_limpia.split(":")
+        if len(campos) > 1:  # Significa que hay una etiqueta presente
+            etiqueta = campos[0].strip()
+            direcciones[etiqueta] = direccion_actual
+            # Si hay una instrucción después de la etiqueta en la misma línea,
+            # la dirección ya está asignada en la línea anterior
+        direccion_actual += 4  # Cada instrucción ocupa 4 bytes
+
+    return direcciones
+
+# Se crea una clase para las instrucciones tipo R
+class InstruccionTipoR():
+    def __init__(self, *campos):
+        self.instruccion_assembler= campos[0]
+        self.rd = campos[1]
+        self.rs1 = campos[2]
+        self.rs2 = campos[3]
+
+        # Se verifica que los registros fuente y destino están en el rango permitido (0-31)
+        if not (0 <= int(self.rd[1:]) <= 31):
+            raise ValueError(f"Registro destino rd inválido: {self.rd}")
+        
+        if not (0 <= int(self.rs1[1:]) <= 31):
+            raise ValueError(f"Registro fuente rs1 inválido: {self.rs1}")
+        
+        if not (0 <= int(self.rs2[1:]) <= 31):
+            raise ValueError(f"Registro fuente rs2 inválido: {self.rs2}")
+
+        # Se asume que todas las instrucciones tipo R tienen el mismo opcode
+        self.opcode = '0110011'
+
+        # Se obtienen los valores de funct3 y funct7 para la instrucción específica
+        if self.instruccion_assembler in instrucciones_R:
+            self.funct3 = instrucciones_R[self.instruccion_assembler]['funct3']
+            self.funct7 = instrucciones_R[self.instruccion_assembler]['funct7']
+        else:
+            raise ValueError(f"Instrucción no soportada: {self.instruccion_assembler}")
+
+    def convertir_a_binario(self):
+        # Lógica específica para convertir una instrucción tipo R a binario.
+        # Convertir los registros a binario
+        rd = format(int(self.rd[1:]), '05b')
+        rs1 = format(int(self.rs1[1:]), '05b')
+        rs2 = format(int(self.rs2[1:]), '05b')
+
+        # Se construye la representación binaria
+        binario = f"{self.funct7}{rs2}{rs1}{self.funct3}{rd}{self.opcode}"
+
+        return binario
+
+# Se crea una clase para las instrucciones tipo I
+class InstruccionTipoI:
+    def __init__(self, *campos):
+        """
+        La clase se encarga de procesar las instrucciones tipo I y convertirlas a binario
+
+        Argumentos:
+        campos -- Tupla con los campos de la instrucción a procesar
+    
+        Retorna:
+        La clase retorna el binario, se encarga de procesar las instrucciones tipo I y convertirlas a binario
+
+        NOTA ACLARATORIA:
+        Ejemplo instrucción de operación inmediata: ('I', '', '', '', '', 'addi', 'x2', 'x2', '-32')
+        Ejemplo instrucción de carga: ('I', 'sw', 'x10', '-12', 'x8', '', '', '', '')
+        Si en la instrucción procesada los primeros campos están vacíos, se asume que son
+        instrucciones de operación inmediata.
+        Si en la instrucción procesada los primeros campos contienen valores, se asume que son
+        instrucciones de carga.
+        Si la instrucción es de carga se toman los primeros 4 campos, si es de operación inmediata
+        se toman los últimos 4 campos.
+        """
+        if campos[0]: # Si el primer campo no está vacío
+            self.instruccion_assembler, self.rd, self.imm, self.rs1 = campos[:4]
+        else: # Si el primer campo está vacío
+            self.instruccion_assembler, self.rd, self.rs1, self.imm = campos[4:]
+        
+        # Se verifica que los registros fuente y destino están en el rango permitido (0-31)
+        if not (0 <= int(self.rd[1:]) <= 31):
+            raise ValueError(f"Registro destino rd inválido: {self.rd}")
+        
+        if not (0 <= int(self.rs1[1:]) <= 31):
+            raise ValueError(f"Registro fuente rs1 inválido: {self.rs1}")
+    
+        # Se verifica que el valor inmediato está en el rango permitido (-2048 a 2047)
+        if not (-2048 <= int(self.imm) <= 2047):
+            raise ValueError(f"Valor inmediato = {self.imm}. Debe estar entre -2048 y 2047")
+
+        # Se asigna el vaor de opcode dependiendo de la instrucción específica tipo I
+        if self.instruccion_assembler == 'jalr':
+            self.opcode = '1100111'
+        elif self.instruccion_assembler in ['ld', 'lw', 'lh', 'lb', 'lbu', 'lhu', 'lwu']:
+            self.opcode = '0000011'
+        else:
+            self.opcode = '0010011'
+
+        # Se obtienen los valores de funct3 y funct7 para la instrucción específica
+        if self.instruccion_assembler in instrucciones_I:
+            self.funct3 = instrucciones_I[self.instruccion_assembler]['funct3']
+            self.funct7 = instrucciones_I[self.instruccion_assembler]['funct7']
+        else:
+            raise ValueError(f"Instrucción no soportada: {self.instruccion_assembler}")
+
+    def convertir_a_binario(self):
+        if self.funct7:  # Si funct7 no está vacío
+            # Se convierte a binario el valor de imm para poder concatenarlo con funct7
+            imm_temp = format(int(self.imm), '05b')
+            imm_bin = format(int(self.funct7 + imm_temp, 2), '012b')
+        else:
+            # Se ajusta imm a 12 bits
+            imm = int(self.imm)
+            imm_bin = format(imm if imm >= 0 else (2**12 + imm), '012b')
+    
+        rd = format(int(self.rd[1:]), '05b')
+        rs1 = format(int(self.rs1[1:]), '05b')
+
+        # Se construye la representación binaria
+        binario = f"{imm_bin}{rs1}{self.funct3}{rd}{self.opcode}"
+        return binario
+
+# Se crea una clase para las instrucciones tipo S
+class InstruccionTipoS:
+    def __init__(self, *campos):
+        """
+        La clase se encarga de procesar las instrucciones tipo S y convertirlas a binario
+
+        Argumentos:
+        campos -- Tupla con los campos de la instrucción a procesar
+    
+        Retorna:
+        La clase retorna el binario, se encarga de procesar las instrucciones tipo S y convertirlas a binario
+
+        """
+        #Ejemplo 1: sw x5, 4(x10)
+        #formato: ('S', 'sw', 'x5', '4', 'x10')
+        self.instruccion_assembler = campos[0]
+        self.rs2 = campos[1]
+        self.imm = campos[2]
+        self.rs1 = campos[3]
+
+        # Se verifica que los registros fuente y destino están en el rango permitido (0-31)
+        if not (0 <= int(self.rs1[1:]) <= 31):
+            raise ValueError(f"Registro destino rs1 inválido: {self.rs1}")
+        
+        if not (0 <= int(self.rs2[1:]) <= 31):
+            raise ValueError(f"Registro fuente rs2 inválido: {self.rs2}")
+    
+        # Se verifica que el valor inmediato está en el rango permitido (-2048 a 2047)
+        if not (-2048 <= int(self.imm) <= 2047):
+            raise ValueError(f"Valor inmediato = {self.imm}. Debe estar entre -2048 y 2047")
+
+        # Se asume que todas las instrucciones tipo S tienen el mismo opcode
+        self.opcode = '0100011'
+
+        # Se obtienen los valores de funct3 para la instrucción específica
+        if self.instruccion_assembler in instrucciones_S:
+            self.funct3 = instrucciones_S[self.instruccion_assembler]['funct3']
+        else:
+            raise ValueError(f"Instrucción no soportada: {self.instruccion_assembler}")
+
+    def convertir_a_binario(self):
+        # Se ajusta imm a 12 bits
+        imm = int(self.imm)
+        imm_bin = format(imm if imm >= 0 else (2**12 + imm), '012b')
+        imm_11_5 = imm_bin[0:7]
+        imm_4_0 = imm_bin[7:12]
+    
+        rs1 = format(int(self.rs1[1:]), '05b')
+        rs2 = format(int(self.rs2[1:]), '05b')
+
+        # Se construye la representación binaria
+        binario = f"{imm_11_5}{rs2}{rs1}{self.funct3}{imm_4_0}{self.opcode}"
+        return binario
+
+# Se crea una clase para las instrucciones tipo SB
+class InstruccionTipoSB:
+    def __init__(self, *campos, direcciones):
+        """
+        La clase se encarga de procesar las instrucciones tipo SB y convertirlas a binario
+
+        Argumentos:
+        campos -- Tupla con los campos de la instrucción a procesar
+        direcciones -- Diccionario con las direcciones de las etiquetas
+    
+        Retorna:
+        La clase retorna el binario, se encarga de procesar las instrucciones tipo SB (ó tipo B) y convertirlas a binario
+
+        """
+        # Ejemplo: beq x5, x6, label
+        # formato: ('SB', 'beq', 'x5', 'x6', 'label')
+        self.instruccion_assembler = campos[0]
+        self.rs1 = campos[1]
+        self.rs2 = campos[2]
+        self.label = campos[3]
+        self.linea_indice = campos[4]
+        self.direcciones = direcciones  # Diccionario con las direcciones de las etiquetas
+
+        direccion_actual_instruccion = f'linea{self.linea_indice}'
+        direccion_actual = self.direcciones.get(direccion_actual_instruccion)
+        direccion_destino = self.direcciones[self.label]
+        self.offset = direccion_destino - direccion_actual
+
+        # Se verifica que los registros fuente están en el rango permitido (0-31)
+        if not (0 <= int(self.rs1[1:]) <= 31):
+            raise ValueError(f"Registro destino rs1 inválido: {self.rs1}")
+        
+        if not (0 <= int(self.rs2[1:]) <= 31):
+            raise ValueError(f"Registro fuente rs2 inválido: {self.rs2}")
+    
+        # Se verifica que el valor inmediato está en el rango permitido (-4096 y 4096)
+        if not (-4096 <= self.offset <= 4096):
+            raise ValueError(f"Valor inmediato = {self.imm}. Debe estar entre -4096 y 4096")
+
+        # Se asume que todas las instrucciones tipo SB tienen el mismo opcode
+        self.opcode = '1100011'
+
+        # Se obtienen los valores de funct3 para la instrucción específica
+        if self.instruccion_assembler in instrucciones_SB:
+            self.funct3 = instrucciones_SB[self.instruccion_assembler]['funct3']
+        else:
+            raise ValueError(f"Instrucción no soportada: {self.instruccion_assembler}")
+
+    def convertir_a_binario(self):
+        # Se tiene precaución de manejar el offset si es negativo
+        offset_binario = format(self.offset if self.offset >= 0 else (2**12 + self.offset), '012b')
+        rs1 = format(int(self.rs1[1:]), '05b')
+        rs2 = format(int(self.rs2[1:]), '05b')
+
+        # Se construye la representación binaria
+        if self.offset < 0:
+            binario = f"{1}{offset_binario[1:7]}{rs2}{rs1}{self.funct3}{offset_binario[7:11]}{offset_binario[0]}{self.opcode}"
+        else:
+            binario = f"{0}{offset_binario[1:7]}{rs2}{rs1}{self.funct3}{offset_binario[7:11]}{offset_binario[0]}{self.opcode}"
+        
+        return binario
+
+# Se crea una clase para las instrucciones tipo U
+class InstruccionTipoU:
+    def __init__(self, *campos):
+        """
+        La clase se encarga de procesar las instrucciones tipo U y convertirlas a binario
+
+        Argumentos:
+        campos -- Tupla con los campos de la instrucción a procesar
+    
+        Retorna:
+        La clase retorna el binario, se encarga de procesar las instrucciones tipo U y convertirlas a binario
+
+        """
+        self.instruccion_assembler = campos[0]
+        self.rd = campos[1]
+        self.imm = campos[2]
+
+        # Se verifica que el registro fuente están en el rango permitido (0-31)
+        if not (0 <= int(self.rd[1:]) <= 31):
+            raise ValueError(f"Registro destino rd inválido: {self.rd}")
+    
+        # Se verifica que el valor inmediato está en el rango permitido (-4096 y 4096)
+        if not (0 <= int(self.imm) <= 1048575):
+            raise ValueError(f"Valor inmediato = {self.imm}. Debe estar entre 0 y 1048575")
+
+        # Se obtienen los valores de opcode para la instrucción específica
+        if self.instruccion_assembler in instrucciones_U:
+            self.opcode = instrucciones_U[self.instruccion_assembler]['opcode']
+        else:
+            raise ValueError(f"Instrucción no soportada: {self.instruccion_assembler}")
+
+    def convertir_a_binario(self):
+        # Se ajusta imm a 20 bits
+        imm_bin = format(int(self.imm), '020b')
+        rd = format(int(self.rd[1:]), '05b')
+
+        # Se construye la representación binaria
+        binario = f"{imm_bin}{rd}{self.opcode}"
+        return binario
+
+# Se crea una clase para las instrucciones tipo UJ
+class InstruccionTipoUJ:
+    def __init__(self, *campos, direcciones):
+        """
+        La clase se encarga de procesar las instrucciones tipo UJ y convertirlas a binario
+
+        Argumentos:
+        campos -- Tupla con los campos de la instrucción a procesar
+        direcciones -- Diccionario con las direcciones de las etiquetas
+    
+        Retorna:
+        La clase retorna el binario, se encarga de procesar las instrucciones tipo UJ y convertirlas a binario
+
+        """
+        # Ejemplo: jal x0, label
+        # formato: ('UJ', 'jal', 'x1', 'while', 10)
+        self.instruccion_assembler = campos[0]
+        self.rd = campos[1]
+        self.label = campos[2]
+        self.linea_indice = campos[3]
+        self.direcciones = direcciones  # Diccionario con las direcciones de las etiquetas
+
+        direccion_actual_instruccion = f'linea{self.linea_indice}'
+        direccion_actual = self.direcciones.get(direccion_actual_instruccion)
+        direccion_destino = self.direcciones[self.label]
+        self.offset = direccion_destino - direccion_actual
+
+        # Se verifica que el registro fuente está en el rango permitido (0-31)
+        if not (0 <= int(self.rd[1:]) <= 31):
+            raise ValueError(f"Registro destino rd inválido: {self.rd}")
+    
+        # Se verifica que el valor de offset está en el rango permitido (-1048576 y 1048574 escablable por 2)
+        if not (-1048576 <= self.offset <= 1048574):
+            raise ValueError(f"Valor offset = {self.offset}. Debe estar entre -1048576 y 1048574")
+
+        # Solo hay una instrucción tipo UJ, por lo que tiene un solo opcode
+        self.opcode = '1101111'
+
+    def convertir_a_binario(self):
+        # Se tiene precaución de manejar el offset si es negativo
+        offset_binario = format(self.offset if self.offset >= 0 else (2**12 + self.offset), '020b')
+        rd = format(int(self.rd[1:]), '05b')
+
+        # Se construye la representación binaria
+        binario = f"{0}{offset_binario[9:19]}{offset_binario[8]}{offset_binario[0:8]}{rd}{self.opcode}"
+
+        return binario
+
+def procesar_instrucciones(instrucciones, direcciones):
+    """
+    La función se encarga de verificar el tipo de instrucción y llamar a la clase correspondiente
+
+    Argumentos:
+    instrucciones -- Lista de instrucciones a procesar
+    direcciones -- Diccionario con las direcciones de las etiquetas
+    
+    Retorna:
+    La función retorna una lista con las instrucciones convertidas a binario
+
+    """
+    binario_instrucciones = [] # Lista para almacenar las instrucciones convertidas a binario
+    for tipo, *partes in instrucciones:
+        if tipo == 'R':
+            try:
+                instruccion = InstruccionTipoR(*partes)
+            except ValueError as e:
+                print(f"Error al procesar la instrucción-> {e}")
+                sys.exit(1)  # Se detiene la ejecución del programa
+            binario = instruccion.convertir_a_binario()
+            binario_instrucciones.append(binario)
+                      
+        elif tipo == 'I':
+            try:
+                instruccion = InstruccionTipoI(*partes)
+            except ValueError as e:
+                print(f"Error al procesar la instrucción-> {e}")
+                sys.exit(1)  # Se detiene la ejecución del programa
+            binario = instruccion.convertir_a_binario()
+            binario_instrucciones.append(binario)
+
+        elif tipo == 'S':
+            try:
+                instruccion = InstruccionTipoS(*partes)
+            except ValueError as e:
+                print(f"Error al procesar la instrucción-> {e}")
+                sys.exit(1)  # Se detiene la ejecución del programa
+            binario = instruccion.convertir_a_binario()
+            binario_instrucciones.append(binario)
+
+        elif tipo == 'SB':
+            try:
+                instruccion = InstruccionTipoSB(*partes, direcciones = direcciones)
+            except ValueError as e:
+                print(f"Error al procesar la instrucción-> {e}")
+                sys.exit(1)  # Se detiene la ejecución del programa
+            binario = instruccion.convertir_a_binario()
+            binario_instrucciones.append(binario)
+
+        elif tipo == 'U':
+            try:
+                instruccion = InstruccionTipoU(*partes)
+            except ValueError as e:
+                print(f"Error al procesar la instrucción-> {e}")
+                sys.exit(1)  # Se detiene la ejecución del programa
+            binario = instruccion.convertir_a_binario()
+            binario_instrucciones.append(binario)
+
+        elif tipo == 'UJ':
+            try:
+                instruccion = InstruccionTipoUJ(*partes, direcciones = direcciones)
+            except ValueError as e:
+                print(f"Error al procesar la instrucción-> {e}")
+                sys.exit(1)  # Se detiene la ejecución del programa
+            binario = instruccion.convertir_a_binario()
+            binario_instrucciones.append(binario)
+
+    return binario_instrucciones
+
+# Función principal
+def main():
+    """
+    Función principal del programa para obtener la representación binaria de instrucciones RISC-V mediante ER
+
+    Argumentos:
+    La función no recibe argumentos
+
+    Retorna:
+    La función no retorna nada, imprime el contenido del archivo en binario y en hexadecimal
+
+    Para propósitos de verificación, se imprime el código en assembler que fue cargado desde
+    el archivo 'input.asm' y mapeado a registros x0-x31, si aplica (por ejemplo, 'sp' a 'x2').
+
+    Se imprimen las instrucciones procesadas obtenidas mediante Expresiones Regulares para
+    verificar que se hayan obtenido correctamente.
+    """
+    presentacion() # Se imprime la presentación del programa
+
+    # Se lee el archivo 'input.asm' y se obtienen las instrucciones mediante expresiones regulares
+    instrucciones_sin_procesar, instrucciones = leer_archivo('input.asm')
+    print("\nInstrucciones procesadas obtenidas mediante Expresiones Regulares:\n")
+    print(instrucciones)
+    input("\nPresione Enter para continuar...")
+
+    # Se asignan direcciones de memoria a las etiquetas requeridas
+    # para obtener el offset de las instrucciones tipo SB y UJ
+    direcciones = asignar_direcciones(instrucciones_sin_procesar)
+
+    # Se procesan las instrucciones y se convierten a binario
+    instrucciones_binario = procesar_instrucciones(instrucciones, direcciones)
+
+    # Se guardan las instrucciones en hexadecimal en un archivo
+    guardar_hexadecimal(instrucciones_binario, 'out.hex')
+
+    # Se imprimen las instrucciones en binario
+    imprimir_binario(instrucciones_binario)
+    
+    # Se imprime el contenido del archivo en hexadecimal
+    imprimir_hexadecimal('out.hex')
+
+# Se ejecuta la función principal
+if __name__ == "__main__":
+    main()
+```
+
+El archivo en assembler se muestra a continuación, el cual se carga con nombre 'input.asm':
+```python
+main:   addi    sp, sp, -32			; Instrucción tipo I
+        sw      ra, 28(sp)                      # 4-byte Folded Spill -> "No F-word idea" del signicado
+        sw      s0, 24(sp)                      # 4-byte Folded Spill -> "No F-word idea" del signicado
+        addi    s0, sp, 32
+        addi    a0, zero, 0
+        sw      a0, -12(s0)			; Instrucción tipo S
+        sw      a0, -16(s0)
+        sw      a0, -20(s0)
+        addi    a0, zero, 10
+        sw      a0, -24(s0)
+        lw      a0, -20(s0)			; Instrucción tipo I de carga
+        sw      a0, -28(s0)
+        jal     zero, LBB0_1			; Instrucción tipo UJ
+LBB0_1: lw      a0, -28(s0)
+        lw      a1, -24(s0)
+        bge     a0, a1, LBB0_4			; Instrucción tipo SB (o B) con un label podrido
+        jal     zero, LBB0_2			; El label podrido lo pone https://godbolt.org/
+LBB0_2: lw      a0, -16(s0)
+        lw      a1, -28(s0)
+        add     a0, a0, a1
+        sw      a0, -16(s0)
+        jal     zero, LBB0_3			# Otro label podrido pero el comentario empieza con #
+LBB0_3: lw      a0, -28(s0)
+        addi    a0, a0, 1
+        sw      a0, -28(s0)
+        jal     zero, LBB0_1
+LBB0_4: addi    a0, zero, 0
+        lw      s0, 24(sp)                      # 4-byte Folded Reload -> "No F-word idea" del signicado
+        lw      ra, 28(sp)                      # 4-byte Folded Reload -> "No F-word idea" del signicado
+        addi    sp, sp, 32
+	jalr zero, 0(ra)
+	beq x4, x5, LBB0_4
+	lui x10, 1000
+	addi x11, x0, 3 			; Test de instrucción de prueba adicionado al final de terminado el código
+```
+
+# Salida en pantalla
+![image](https://github.com/utpgustavogutierrez/assembler-assembler_er/assets/107116124/c296aebc-dad2-4b9d-89eb-0f1abfebe35c)
+![image](https://github.com/utpgustavogutierrez/assembler-assembler_er/assets/107116124/986ab26d-e44e-4550-9879-c0bd79b44529)
+![image](https://github.com/utpgustavogutierrez/assembler-assembler_er/assets/107116124/3e961b49-6c11-4d30-add8-39f01f1ad8b9)
+
+Las instrucciones tanto en binario como en hexadecimal son más extensas, se recortan por espacio en el documento, sin embargo, estas quedan en el archivo 'out.hex' al correr el código.
